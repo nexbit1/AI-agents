@@ -41,4 +41,4 @@ response = gemini.chat.completions.create(model=model_name, messages=messages)
 answer = response.choices[0].message.content
 print(answer)
 competitors.append(model_name)
-answers.append(answer)
+answers.append(answer) 
