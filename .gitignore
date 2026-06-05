@@ -1,6 +1,8 @@
 <<<<<<< HEAD
 .env
 .venv
+.gradio
+
 =======
 # Byte-compiled / optimized / DLL files
 __pycache__/
