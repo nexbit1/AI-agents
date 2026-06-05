@@ -105,7 +105,76 @@ def chat(message, history):
         reply = rerun(reply, message, history, evaluation.feedback)       
     return reply
 
+# gr.ChatInterface(chat).launch(share=True)
 
-gr.ChatInterface(chat).launch(share=True)
+css = """
+footer {display:none !important;}
 
+.gradio-container {
+    max-width: 1100px !important;
+    margin: auto !important;
+}
 
+h1 {
+    text-align:center;
+    font-size:42px !important;
+    margin-top:40px;
+    margin-bottom:10px;
+}
+
+.subtitle {
+    text-align:center;
+    color:#888;
+    margin-bottom:30px;
+}
+
+.prompt-card {
+    padding:16px;
+    border-radius:16px;
+    border:1px solid #ddd;
+    cursor:pointer;
+    transition:0.2s;
+}
+
+.prompt-card:hover {
+    transform:translateY(-2px);
+}
+
+.message {
+    border-radius:18px !important;
+}
+"""
+
+with gr.Blocks(
+    theme=gr.themes.Soft(),
+    css=css
+) as demo:
+
+    gr.Markdown( """ <h1 align="center">👨‍💻 Hi, I'm Omkar</h1>""")
+
+    gr.HTML("""
+    <div class='subtitle'>
+        Ask me anything ;)
+    </div>
+    """)
+
+    chatbot = gr.ChatInterface(
+        fn=chat,
+        show_progress="hidden",
+        chatbot=gr.Chatbot(
+            show_label=False,
+            height=650
+        ),
+        textbox=gr.Textbox(
+            placeholder="Chat with me..",
+            container=False
+        ),
+        examples=[
+            "Build a PHP REST API",
+            "What are your skills",
+            "Explain SQL and write a complex query.",
+            "Tell me about you self"
+        ]
+    )
+
+demo.launch()
