@@ -2,3 +2,4 @@ dotenv
 openai
 pypdf
 gradio
+python-dotenv

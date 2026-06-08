@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from pypdf import PdfReader
 import gradio as gr
-from pydantic import BaseModel
 
 load_dotenv(override=True)
 
@@ -115,4 +114,4 @@ if __name__ == "__main__":
         ]
     )
 
-    demo.launch(share=True)
+    demo.launch()
