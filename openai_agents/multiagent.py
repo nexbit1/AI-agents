@@ -1,11 +1,13 @@
 from dotenv import load_dotenv
-from agents import Agent, Runner, trace, function_tool
+from openai import AsyncOpenAI
+from agents import Agent, Runner, trace, function_tool, OpenAIChatCompletionsModel, input_guardrail, GuardrailFunctionOutput
 from openai.types.responses import ResponseTextDeltaEvent
 from typing import Dict
 import sendgrid
 import os
 from sendgrid.helpers.mail import Mail, Email, To, Content
 import asyncio
+from pydantic import BaseModel
 
 load_dotenv(override=True)
 
@@ -60,15 +62,83 @@ async def salesPickerPickMail():
 
 # best_email = asyncio.run(salesPickerPickMail())
 
-
 description = "Write a cold sales email"
 tool1 = sales_agent1.as_tool(tool_name="sales_agent1", tool_description=description)
 tool2 = sales_agent2.as_tool(tool_name="sales_agent2", tool_description=description)
 tool3 = sales_agent3.as_tool(tool_name="sales_agent3", tool_description=description)
 tools = [tool1, tool2, tool3, sendEmail]
 
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+gemini_client = AsyncOpenAI(base_url=GEMINI_BASE_URL, api_key=os.getenv('GOOGLE_API_KEY'))
+gemini_model = OpenAIChatCompletionsModel(model="gemini-3.1-flash-lite", openai_client=gemini_client)
+
+instructions1 = "You are a hardworking sales agent for Nexbit Inc, \
+a company that provides a SaaS tool for ensuring SOC2 compliance and preparing for audits, powered by AI. \
+You write concise, to the point cold emails."
+sales_agent4 = Agent(name="Hardworking Sales agent",instructions=instructions1,model=gemini_model)
+tool4 = sales_agent4.as_tool(tool_name="sales_agent4",tool_description=description)
+tools.append(tool4)
+
+@function_tool
+def send_html_email(subject: str, html_body: str) -> Dict[str, str]:
+    """ Send out an email with the given subject and HTML body to all sales prospects """
+    sg = sendgrid.SendGridAPIClient(api_key=os.environ.get('SENDGRID_API_KEY'))
+    from_email = Email(os.environ.get('EMAIL_SENDER'))
+    to_email = To(os.environ.get('EMAIL_RECIEVER'))
+    content = Content("text/html", html_body)
+    mail = Mail(from_email, to_email, subject, content).get()
+    sg.client.mail.send.post(request_body=mail)
+    return {"status": "success"}
+
+subject_instructions = "You can write a subject for a cold sales email. \
+You are given a message and you need to write a subject for an email that is likely to get a response."
+html_instructions = "You can convert a text email body to an HTML email body. \
+You are given a text email body which might have some markdown \
+and you need to convert it to an HTML email body with simple, clear, compelling layout and design."
+
+subject_writer = Agent(name="Email subject writer", instructions=subject_instructions, model="gpt-4o-mini")
+subject_tool = subject_writer.as_tool(tool_name="subject_writer", tool_description="Write a subject for a cold sales email")
+
+html_converter = Agent(name="HTML email body converter", instructions=html_instructions, model="gpt-4o-mini")
+html_tool = html_converter.as_tool(tool_name="html_converter",tool_description="Convert a text email body to an HTML email body")
+
+email_tools = [subject_tool, html_tool, send_html_email]
+
+instructions ="You are an email formatter and sender. You receive the body of an email to be sent. \
+You first use the subject_writer tool to write a subject for the email, then use the html_converter tool to convert the body to HTML. \
+Finally, you use the send_html_email tool to send the email with the subject and HTML body."
+
+emailer_agent = Agent(
+    name="Email Manager",
+    instructions=instructions,
+    tools=email_tools,
+    model="gpt-4o-mini",
+    handoff_description="Convert an email to HTML and send it")
+
+handoffs = [emailer_agent]
+
+
+
+class NameCheckOutput(BaseModel):
+    is_name_in_message: bool
+    name: str
+
+guardrail_agent = Agent( 
+    name="Name check",
+    instructions="Check if the user is including someone's personal name in what they want you to do.",
+    output_type=NameCheckOutput,
+    model="gpt-4o-mini"
+)
+
+@input_guardrail
+async def guardrail_against_name(ctx, agent, message):
+    result = await Runner.run(guardrail_agent, message, context=ctx.context)
+    is_name_in_message = result.final_output.is_name_in_message
+    return GuardrailFunctionOutput(output_info={"found_name": result.final_output},tripwire_triggered=is_name_in_message)
+
+
 manager_instructions = """
-You are a Sales Manager at ComplAI. Your goal is to find the single best cold sales email using the sales_agent tools.
+You are a Sales Manager at Nexbit Inc. Your goal is to find the single best cold sales email using the sales_agent tools.
  
 Follow these steps carefully:
 1. Generate Drafts: Use all three sales_agent tools to generate three different email drafts. Do not proceed until all three drafts are ready.
@@ -82,12 +152,11 @@ Crucial Rules:
 - You must send ONE email using the send_email tool — never more than one.
 """
 
-sales_manager = Agent(name="Sales Manager", instructions=manager_instructions, tools=tools, model="gpt-4o-mini")
+sales_manager = Agent(name="Sales Manager", instructions=manager_instructions, tools=tools, model="gpt-4o-mini",handoffs=handoffs,input_guardrails=[guardrail_against_name])
 
-message = "Send a cold sales email addressed to 'Dear CEO'"
+message = "Send a cold sales email addressed to 'Dear CEO '"
 async def managerSendsMail():
     with trace("Sales manager"):
         await Runner.run(sales_manager, message)
 
-
-asyncio.run(managerSendsMail())
+# asyncio.run(managerSendsMail())
