@@ -1,0 +1,2 @@
+OPENAI_MODEL="gpt-5-nano"
+HOW_MANY_SEARCHES=2
